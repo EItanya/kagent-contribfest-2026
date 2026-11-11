@@ -10,7 +10,7 @@ CRD, request-filter, pagination, or agent-runtime changes are needed.
 
 ## Materials
 
-- [Participant guide](participant-guide.md): follow its ten chapters in order.
+- [Participant guide](participant-guide.md): follow its twelve chapters in order.
 
 ## Participant setup
 

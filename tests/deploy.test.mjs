@@ -8,7 +8,7 @@ const script = fileURLToPath(new URL('../scripts/deploy.mjs', import.meta.url));
 test('deployment dry-run builds and prints project creation and preview commands', () => {
   const result = spawnSync(process.execPath, [script, '--dry-run', '--create', '--project', 'workshop-test', '--branch', 'preview'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Built 10 chapters/);
+  assert.match(result.stdout, /Built 12 chapters/);
   assert.match(result.stdout, /Cloudflare account: Solo\.io \(7d33c874b75a7afed3a44c6126896050\)/);
   assert.match(result.stdout, /"pages" "project" "create" "workshop-test" "--production-branch" "main"/);
   assert.match(result.stdout, /"pages" "deploy" "dist" "--project-name" "workshop-test" "--branch" "preview"/);

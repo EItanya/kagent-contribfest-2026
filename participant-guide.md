@@ -46,7 +46,156 @@ Choose GitHub Codespaces in the browser or VS Code locally with Docker and
 the Dev Containers extension. Both use the kagent Dev Container; you do not
 need to install Go, Node, or Kubernetes tools on your host.
 
-Follow the setup instructions in the next chapter.
+The next two chapters introduce kagent. Setup starts in the chapter after
+them; skip ahead if you already know kagent 1.x.
+
+## kagent in Brief
+
+kagent is a Kubernetes-native framework for building, deploying, and managing
+AI agents. It is a Cloud Native Computing Foundation project. You describe
+agents as Kubernetes resources; kagent prepares them, runs them, and exposes
+them to people and other programs.
+
+### Components
+
+| Component | Role |
+| --- | --- |
+| Controller | Watches kagent resources, prepares agents to run, and manages their sessions. Serves the gRPC, A2A, and MCP APIs. |
+| UI | Web app for managing agents and tools and for chatting with agents. It calls the controller over gRPC-Web. |
+| CLI | Command-line access to the same controller APIs. |
+| Substrate | Runs agent processes as Actors and handles suspension, resumption, and snapshots. |
+| Agent runtimes | The process inside an Actor: the kagent Go or Python ADK, Codex, Claude, or your own image. |
+| PostgreSQL | Stores sessions, tasks, and conversation history so they outlive the running agent. |
+
+The UI and CLI never talk to an agent directly. Requests go to the controller,
+which routes them to the right Actor through Substrate.
+
+### Resources You Author
+
+These are `api.kagent.dev/v1alpha3` Kubernetes resources:
+
+| Resource | Answers | Contains |
+| --- | --- | --- |
+| `AgentTemplate` | What does the agent do? | Model, description, system prompt, MCP tools, skills, plugins, and subagents. |
+| `Harness` | How does it run? | One runtime (kagent, Codex, Claude, or bring-your-own), an optional image override, the WorkerPool, and the snapshot location. |
+| `Agent` | Which behavior runs on which runtime? | A template, inline or by reference, plus a `harnessRef`. Its status reports readiness. |
+| `ModelConfig` | Which model? | Provider, model name, and endpoint settings. |
+| `RemoteMCPServer` | Which tools? | An MCP server that agents can connect to. |
+
+Splitting behavior from execution lets a platform team own Harnesses while
+agent authors own templates. The same template can run on any compatible
+Harness.
+
+A minimal Agent with an inline template looks like this. You do not need to
+apply it; the lab creates its own agents later.
+
+```yaml
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: assistant
+  namespace: kagent
+spec:
+  kagent: {}
+  substrate:
+    workerPoolRef:
+      name: kagent-default
+    snapshotPolicy:
+      location: s3://ate-snapshots/kagent
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: assistant
+  namespace: kagent
+spec:
+  template:
+    inline:
+      modelConfig:
+        name: default-model-config
+      description: A general-purpose assistant.
+      systemPrompt: You are a helpful assistant running on kagent.
+  harnessRef:
+    name: assistant
+```
+
+### What Is Not a Kubernetes Resource
+
+Sessions, tasks, conversation history, and checkpoints live in PostgreSQL and
+are reached through the controller's APIs. `kubectl get` will not show them.
+
+### Ways In
+
+| Surface | Used for |
+| --- | --- |
+| Kubernetes API | Authoring Agents, Harnesses, AgentTemplates, models, and MCP servers. |
+| gRPC and gRPC-Web | Listing agents and managing sessions. The Agents page you will change reads from here. |
+| A2A | Sending messages to an agent and streaming its task events. |
+| MCP | Letting other agents and tools discover and invoke kagent agents. |
+
+## How an Agent Becomes Ready
+
+Applying an Agent does not start a process that waits for chats. The controller
+first turns the Agent into a prepared revision. The Status filter you will
+build reports where each Agent is in that process.
+
+### From Resource to Revision
+
+1. **Resolve.** The controller reads the Agent's template and Harness, plus
+   everything they reference: models, MCP servers, subagent templates.
+2. **Compile.** The Harness's runtime compiler turns those inputs into an
+   immutable revision: image, configuration, capacity, and snapshot settings.
+3. **Apply.** The controller registers the revision with Substrate.
+4. **Snapshot.** Substrate boots one "golden" instance of the runtime and
+   snapshots it once it is ready.
+5. **Succeed.** The Agent's `latestSuccessfulRevision` moves to the new
+   revision.
+
+Every edit to the Agent, its template, or its Harness repeats these steps for a
+new revision. Step 4 commonly takes a minute or more.
+
+### What the Agent Reports
+
+The controller writes the result to the Agent's `status`:
+
+| Field | Meaning |
+| --- | --- |
+| `observedGeneration` | The latest spec generation the controller has processed. |
+| `desiredRevision` | The revision compiled from the current configuration. |
+| `latestSuccessfulRevision` | The newest revision that finished all five steps. |
+| `conditions` | `Accepted`, `ResolvedRefs`, `Compatible`, and `Ready`, plus `EgressPoliciesApplied`. |
+
+A missing template or Harness sets `ResolvedRefs=False`. A template the chosen
+runtime cannot run sets `Compatible=False`. `Ready=False` with reason
+`ActorTemplatePending` means the snapshot is still being taken; that is
+progress, not failure.
+
+The six states in the first chapter's table come from these fields. An
+Agent with a successful revision and a failing newer one is Update failed; one
+with no successful revision yet is Preparing or Failed.
+
+### Sessions Use the Last Good Revision
+
+A Session is one conversation. It is created from the Agent's latest
+successful revision and stays pinned to it.
+
+- A pending or failed edit does not break running Sessions or block new ones.
+  They use the previous successful revision.
+- An Agent with no successful revision cannot start a Session.
+- New Sessions pick up a change only after its revision succeeds.
+
+Substrate suspends a Session's Actor when it goes idle and resumes it on the
+next message, so idle conversations do not hold compute.
+
+### Where This Lab Touches the Code
+
+| Path | What lives there | In this lab |
+| --- | --- | --- |
+| `ui/` | The web UI | Add the filter function, its tests, and the Status control. |
+| `go/core/internal/service` | Controller services and workflows | Add the Go revision-state calculation. |
+| `go/core/internal/grpcserver` | gRPC handlers | Fill the new field when mapping an Agent. |
+| `proto/` | gRPC API definitions | Add the `revision_state` response field. |
+| `go/api/v1alpha3` | Kubernetes API types | Read only; no CRD change. |
 
 ## Prepare the Environment and Start Builds
 

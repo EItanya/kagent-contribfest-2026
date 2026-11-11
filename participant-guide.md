@@ -205,8 +205,7 @@ and UI after completing the exercises.
 
 ### 1. Get the Source
 
-The examples use commit `ccb2dd350e06be990618f3e464fbb07d0d67ca3d`
-(2026-11-06). Launch the updated Dev Container before switching to this commit.
+Use the `main` branch for the workshop.
 
 <!-- setup:codespaces -->
 #### GitHub Codespaces
@@ -215,8 +214,7 @@ You need a GitHub account with Codespaces access and available quota or billing.
 
 1. Open [kagent on GitHub](https://github.com/kagent-dev/kagent).
 2. Select **Code > Codespaces > ... > New with options**.
-3. Select the branch containing the presenter's workshop Dev Container
-   updates. Use `main` only after those updates have been merged there.
+3. Select the `main` branch.
 4. Choose a larger machine for Kubernetes and image builds.
 5. Select **Create codespace**. Wait for the browser editor, container build,
    and cluster setup to finish before running workshop commands.
@@ -229,23 +227,18 @@ the Dev Containers extension installed. Start Docker, then clone the repository
 and open its root folder in VS Code:
 
 ```sh cwd=parent
-git clone https://github.com/kagent-dev/kagent.git
+git clone --branch main https://github.com/kagent-dev/kagent.git
 cd kagent
 ```
 
 In VS Code, run **Dev Containers: Reopen in Container** and wait for the image
-build and cluster setup to finish. Use the branch containing the workshop
-Dev Container updates if they have not yet been merged into `main`.
+build and cluster setup to finish.
 
 <!-- setup:end -->
 #### Continue Here for Either Option
 
 Use the integrated terminal inside your Codespace or local Dev Container
-for all remaining commands. Create your workshop branch at the pinned source:
-
-```sh cwd=kagent
-git switch -c contribfest-status-filter ccb2dd350e06be990618f3e464fbb07d0d67ca3d
-```
+for all remaining commands. Stay on `main`; no additional checkout is needed.
 
 ### 2. Check the Prepared Cluster
 

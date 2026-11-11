@@ -22,10 +22,9 @@ Choose either environment; both use the kagent repository's Dev Container:
 - **Local:** use Git, Docker Desktop (or another supported Docker engine),
   VS Code, and the Dev Containers extension, then **Reopen in Container**.
 
-Follow the [participant guide](participant-guide.md) for branch selection,
-automatic Kind setup, the pinned workshop source, and browser port forwarding.
-Publish the updated Dev Container to the selected GitHub branch before sending
-attendees there. Codespaces setup still needs an end-to-end presenter rehearsal.
+Use `main` for both environments. Follow the [participant guide](participant-guide.md)
+for automatic Kind setup and browser port forwarding.
+Codespaces setup still needs an end-to-end presenter rehearsal.
 
 ## Website
 

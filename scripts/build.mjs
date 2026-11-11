@@ -11,8 +11,6 @@ import protobuf from 'highlight.js/lib/languages/protobuf';
 const root = new URL('../', import.meta.url);
 const read = (name) => readFile(new URL(name, root), 'utf8');
 const guide = await read('participant-guide.md');
-const sourceCommit = guide.match(/git switch (?:--detach|-c contribfest-status-filter) ([a-f0-9]{40})/)?.[1];
-if (!sourceCommit) throw new Error('Missing pinned kagent source commit.');
 const sourceFiles = new Map([
   ['ui/src/api/domain/agents.ts', 'ui/src/api/domain/agents.ts'],
   ['ui/src/api/domain/agents.test.ts', 'ui/src/api/domain/agents.test.ts'],
@@ -45,8 +43,8 @@ marked.use({
       const isNew = newFiles.has(text);
       const path = isNew ? 'go/core/internal/service' : sourceFiles.get(text);
       if (!path) return false;
-      const url = `https://github.com/kagent-dev/kagent/${isNew ? 'tree' : 'blob'}/${sourceCommit}/${path}`;
-      const title = isNew ? 'New file; open its parent folder on GitHub' : 'Open pinned source on GitHub';
+      const url = `https://github.com/kagent-dev/kagent/${isNew ? 'tree' : 'blob'}/main/${path}`;
+      const title = isNew ? 'New file; open its parent folder on GitHub' : 'Open source on main on GitHub';
       return `<a class="source-link" href="${url}" target="_blank" rel="noopener noreferrer" title="${title}"><code>${text}</code><i data-lucide="${isNew ? 'folder' : 'arrow-up-right'}" aria-hidden="true"></i></a>`;
     },
     code({ text, lang }) {

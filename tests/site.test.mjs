@@ -18,6 +18,10 @@ test('workshop builds only required images and installs once after the code exer
   const installation = commands(chapters.get('Install the Updated Controller and UI'));
   const packaged = commands(chapters.get('Verify the Packaged UI'));
   const all = commands(guide);
+  assert.match(setup, /git clone --branch main https:\/\/github\.com\/kagent-dev\/kagent\.git/);
+  assert.match(guide, /Select the `main` branch\./);
+  assert.doesNotMatch(setup, /git (?:switch|checkout)\b/);
+  assert.doesNotMatch(guide, /ccb2dd350e06be990618f3e464fbb07d0d67ca3d|pinned source|pinned workshop|updates have been merged/);
   assert.match(setup, /make build-golang-adk build-claude-harness build-codex-harness VERSION=0\.0\.0-contribfest/);
   assert.doesNotMatch(setup, /make (?:kagent-cli-deploy|build-controller|build-ui)\b/);
   assert.match(installation, /make build-controller build-ui VERSION=0\.0\.0-contribfest AWK=awk BUILD_PROTO_GENERATE= &&\nmake kagent-cli-deploy/);
@@ -123,7 +127,7 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.locator('nav a[href="#function"]').click();
     const helperCode = page.locator('#function pre code.language-ts');
     const sourceLink = page.locator('#function a.source-link').first();
-    assert.equal(await sourceLink.getAttribute('href'), 'https://github.com/kagent-dev/kagent/blob/ccb2dd350e06be990618f3e464fbb07d0d67ca3d/ui/src/api/domain/agents.ts');
+    assert.equal(await sourceLink.getAttribute('href'), 'https://github.com/kagent-dev/kagent/blob/main/ui/src/api/domain/agents.ts');
     assert.equal(await sourceLink.getAttribute('target'), '_blank');
     assert.equal(await sourceLink.getAttribute('rel'), 'noopener noreferrer');
     assert.match(await page.locator('#install .code-context').first().textContent(), /Parent of your kagent checkout/);
@@ -137,7 +141,7 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.waitForFunction(() => document.querySelector('#function .copy-button').getAttribute('aria-label') === 'Copied');
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), helperSource);
     await page.locator('nav a[href="#backend"]').click();
-    assert.equal(await page.locator('#backend a.source-link[title^="New file"]').first().getAttribute('href'), 'https://github.com/kagent-dev/kagent/tree/ccb2dd350e06be990618f3e464fbb07d0d67ca3d/go/core/internal/service');
+    assert.equal(await page.locator('#backend a.source-link[title^="New file"]').first().getAttribute('href'), 'https://github.com/kagent-dev/kagent/tree/main/go/core/internal/service');
     assert.match(await page.locator('#backend .code-context').first().textContent(), /kagent\//);
     assert.match(await page.locator('#backend .code-context').last().textContent(), /kagent\/ui\//);
     assert.ok(await page.locator('#backend code.language-go .hljs-keyword').count() > 0);

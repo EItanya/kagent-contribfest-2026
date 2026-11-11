@@ -5,6 +5,39 @@ const sidebar = document.querySelector('#sidebar');
 const menu = document.querySelector('#menu');
 const backdrop = document.querySelector('#backdrop');
 const announcement = document.querySelector('#announcement');
+document.querySelectorAll('.setup-options').forEach((options) => {
+  const tablist = options.querySelector('.setup-tablist');
+  const tabs = [...tablist.querySelectorAll('button')];
+  const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls')));
+  function selectTab(selected) {
+    tabs.forEach((tab, index) => {
+      tab.setAttribute('aria-selected', String(index === selected));
+      tab.tabIndex = index === selected ? 0 : -1;
+      panels[index].hidden = index !== selected;
+    });
+  }
+  tablist.setAttribute('role', 'tablist');
+  tabs.forEach((tab, index) => {
+    tab.setAttribute('role', 'tab');
+    panels[index].setAttribute('role', 'tabpanel');
+    panels[index].setAttribute('aria-labelledby', tab.id);
+    panels[index].tabIndex = 0;
+    tab.addEventListener('click', () => selectTab(index));
+    tab.addEventListener('keydown', (event) => {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      selectTab(next);
+      tabs[next].focus();
+    });
+  });
+  selectTab(0);
+  tablist.hidden = false;
+});
 let completed = new Set();
 try {
   const saved = JSON.parse(localStorage.getItem('kagent-workshop-v1') || '[]');

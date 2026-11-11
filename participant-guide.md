@@ -6,26 +6,21 @@ Add a Status filter to the Agents page. Select Ready to hide agents whose
 current configuration is still being prepared or has failed. Select several
 statuses to see their combined results. Clear the selection to see all agents.
 
-Start the required runtime-image builds, then build and test the UI filter
-using fixtures while those builds run. Move the revision-state calculation
-into the controller, return it through the API, and update the UI to use it.
-Build the finished controller and UI once, install kagent with Substrate, and
-verify the response and filter together. No database or CRD change is needed.
+Build and test the filter with fixtures, then move the revision-state
+calculation into the controller and return it through the API. Install your
+updated controller and UI to verify them together. No database or CRD change
+is needed.
 
 Follow the chapters in order. Start each command block in the directory shown
 above it.
 
-### The 1.x Pieces Behind the Page
+### Agent Revision Status
 
 - An AgentTemplate defines behavior: model, prompt, tools, and skills.
 - A Harness defines execution: runtime, WorkerPool, and snapshot location.
 - An Agent pairs the template with the Harness. The controller prepares a revision and reports its status.
-- A Session is a conversation pinned to a successful revision. Substrate runs its Actor on a Worker.
-
-Between turns, kagent uses Data snapshots to retain the Actor's durable data
-and release its Worker. On resume, containers restart with that data. A Session
-can stay READY while its Actor is suspended. Use Agent revision status for
-this filter.
+- A Session is a conversation pinned to a successful revision. Its status is
+  separate from the Agent revision status used by this filter.
 
 The UI already computes these six states in `agentRevisionState`:
 
@@ -47,52 +42,38 @@ does not make a revision Failed. The Go calculation must preserve that rule.
 
 ### Start Here
 
-- Choose your environment: **GitHub Codespaces in the browser** (no local
-  installation) or **VS Code locally** with Docker and the Dev Containers
-  extension. Both use the kagent Dev Container; you do not need to install
-  Go, Node, Kubernetes tools, or build dependencies on your host.
-- For Codespaces, open [kagent on GitHub](https://github.com/kagent-dev/kagent)
-  and choose **Code > Codespaces**. For local VS Code, clone the repository
-  and choose **Dev Containers: Reopen in Container**. Follow step 1 below
-  before creating your workshop branch.
-- Open separate integrated terminals for commands, Vite, and port-forwards.
-  Use the source commit and development `VERSION` shown in this guide.
-- Continue with step 1 below to check out the pinned workshop source. The
-  cluster is prepared. Start the runtime builds, then continue coding without
-  waiting for them. Install kagent only after the code changes are complete.
+Choose GitHub Codespaces in the browser or VS Code locally with Docker and
+the Dev Containers extension. Both use the kagent Dev Container; you do not
+need to install Go, Node, or Kubernetes tools on your host.
+
+Follow the setup instructions in the next chapter.
 
 ## Prepare the Environment and Start Builds
 
-The Dev Container prepares Kind. In this chapter, start the required runtime
-builds in a separate terminal, then continue to the UI exercises. Do not build
-or install a baseline controller/UI: you will build the finished versions
-and install once in Install the Updated Controller and UI.
-
-The Dev Container includes the tools needed for the workshop.
+The Dev Container prepares Kind and includes the workshop tools. Start the
+runtime builds, then code while they run. Build and install the controller
+and UI after completing the exercises.
 
 ### 1. Get the Source
 
-The workshop source is upstream `main` commit
-`ccb2dd350e06be990618f3e464fbb07d0d67ca3d` (2026-11-06). Use this commit for
-both the code examples and the installation. Clone the default branch and
-launch the Dev Container first, so it uses the updated `.devcontainer`
-configuration from `main` and prepares the cluster automatically.
+The examples use commit `ccb2dd350e06be990618f3e464fbb07d0d67ca3d`
+(2026-11-06). Launch the updated Dev Container before switching to this commit.
 
-#### Option A: GitHub Codespaces in Your Browser
+<!-- setup:codespaces -->
+#### GitHub Codespaces
 
-You need a GitHub account with Codespaces access and available quota or
-billing. No local Docker, Git, or VS Code installation is required.
+You need a GitHub account with Codespaces access and available quota or billing.
 
 1. Open [kagent on GitHub](https://github.com/kagent-dev/kagent).
 2. Select **Code > Codespaces > ... > New with options**.
 3. Select the branch containing the presenter's workshop Dev Container
    updates. Use `main` only after those updates have been merged there.
-4. Choose a machine with enough CPU, memory, and disk for Kubernetes and image
-   builds; prefer a larger machine over the smallest available option.
+4. Choose a larger machine for Kubernetes and image builds.
 5. Select **Create codespace**. Wait for the browser editor, container build,
    and cluster setup to finish before running workshop commands.
 
-#### Option B: Dev Containers in Local VS Code
+<!-- setup:local -->
+#### VS Code (Local)
 
 Have Git, Docker Desktop (or another supported Docker engine), VS Code, and
 the Dev Containers extension installed. Start Docker, then clone the repository
@@ -107,6 +88,7 @@ In VS Code, run **Dev Containers: Reopen in Container** and wait for the image
 build and cluster setup to finish. Use the branch containing the workshop
 Dev Container updates if they have not yet been merged into `main`.
 
+<!-- setup:end -->
 #### Continue Here for Either Option
 
 Use the integrated terminal inside your Codespace or local Dev Container
@@ -116,12 +98,9 @@ for all remaining commands. Create your workshop branch at the pinned source:
 git switch -c contribfest-status-filter ccb2dd350e06be990618f3e464fbb07d0d67ca3d
 ```
 
-The container automatically runs `make create-kind-cluster` to prepare the
-`kagent` Kind cluster, local registry, and MetalLB.
-
 ### 2. Check the Prepared Cluster
 
-The Dev Container prepared the cluster during startup. Confirm it is ready:
+Check the cluster created during container startup:
 
 ```sh cwd=kagent
 kubectl --context kind-kagent get nodes
@@ -133,19 +112,14 @@ Expect a Ready node and entries for `PodCertificateRequest` and
 
 ### 3. Start the Runtime Builds While You Code
 
-Open a **build terminal** at the repository root and run this once. Leave it
-running while you continue to Run the UI and Get Test Data in another terminal.
-No provider key or running kagent installation is needed yet.
+Run this in a separate terminal at the repository root, then continue to the
+next chapter without waiting. No provider key is needed yet.
 
 ```sh cwd=kagent
 make build-golang-adk build-claude-harness build-codex-harness VERSION=0.0.0-contribfest AWK=awk BUILD_PROTO_GENERATE=
 ```
 
-These three runtime images are required by the chart's image catalog. Build
-them once; you will build the changed controller and UI after the code exercises.
-
-Continue to the UI exercises now. No kagent deployment or API forward is
-needed for fixtures, unit tests, or the Go status calculation.
+The chart requires all three runtime images. Build them once.
 
 ## Run the UI and Get Test Data
 
@@ -154,30 +128,24 @@ needed for fixtures, unit tests, or the Go status calculation.
 | Terminal | Working directory | Purpose | Address |
 | --- | --- | --- | --- |
 | Commands | kagent root; `ui/` for Yarn; `go/` for Go tests | Edits, tests, builds, and kubectl | No server |
-| Runtime builds | kagent root | Let the one-time runtime builds finish while you code | No server |
+| Runtime builds | kagent root | Build runtime images while you code | No server |
 | Controller forward | Any directory | Keep the controller reachable from Vite and grpcurl | `127.0.0.1:8083` |
 | Vite | `kagent/ui` | Local UI; restart when changing mock mode | Printed URL, usually `127.0.0.1:8001` |
 | Deployed UI forward | Any directory | Inspect the packaged UI after rollout | `127.0.0.1:8082` |
 
-Mock mode needs only Vite. Live mode needs Vite and the controller forward.
-Port 8082 shows the deployed image. Use Vite on 8001 to see local source edits.
-Keep long-lived
-commands running until the guide says to restart or stop them. If a port is
-occupied, stop your earlier forward/server or ask the presenter before changing
-it; changing the controller port also requires updating Vite's proxy target.
+Keep servers and port-forwards running in separate terminals. If a port is
+occupied, stop the earlier process; changing port 8083 also requires changing
+Vite's proxy target.
 
 In Codespaces, open the editor's **Ports** tab and use **Open in Browser**
-for port **8001** (Vite) or **8082** (the deployed UI). Add the port manually
-if it is not listed. Use the forwarded HTTPS URL, not `localhost` in your
-laptop's browser, and append `/agents` if needed. Keep port visibility
-**Private**. Port **8083** is used by Vite and grpcurl inside the environment;
-it does not need to be exposed publicly. Locally, use the localhost URLs below.
+for port **8001** (Vite) or **8082** (the deployed UI). Add the port if missing
+and append `/agents` to its HTTPS URL. Keep port visibility **Private**;
+port **8083** only needs to be reachable inside the container.
+Locally, use the localhost URLs below.
 
-### 1. Start with Mock Data, Not a Controller
+### 1. Use Mock Data
 
-Leave the runtime-build terminal running. Do not start a controller forward
-yet: kagent is not installed and mock mode does not use it. You will start
-that forward after the single installation later in the guide.
+Use fixtures until kagent is installed. No controller forward is needed yet.
 
 ### 2. Install UI Dependencies
 
@@ -189,12 +157,7 @@ corepack yarn --version
 corepack yarn install --immutable
 ```
 
-The version command should print `4.9.0` for this checkout. Use `corepack yarn`
-throughout the lab so a global Yarn 1 executable cannot take precedence.
-
-Install dependencies once. The UI chapters use `kagent/ui` as their working
-directory; the backend chapters say when to return to the source root or Go
-module. No new UI dependencies are needed for the filter.
+Expect Yarn `4.9.0`. Use `corepack yarn` throughout the lab.
 
 ### 3. Start with Fixtures
 
@@ -202,9 +165,7 @@ module. No new UI dependencies are needed for the filter.
 KAGENT_UI_ENABLE_MOCK=true corepack yarn dev --host 127.0.0.1
 ```
 
-Open the printed URL, normally `http://localhost:8001/agents`. This mode uses
-in-browser fixtures and lets you test rendering without waiting for real
-agent revisions. Later, you will switch mock mode off to verify the API path.
+Open the printed URL, normally `http://localhost:8001/agents`.
 
 Open `src/pages/AgentsPage.tsx`. Locate `FILTER_IDS`, the `filtered` calculation,
 and the `<FilterBar>` element. The existing namespace filter shows how the new
@@ -295,9 +256,7 @@ From `kagent/ui`, run:
 corepack yarn test src/api/domain/agents.test.ts
 ```
 
-Expect the existing readiness tests and all six new filter tests to pass.
-If a test fails, fix the function before editing the page. A compile error or
-`no tests to run` is not a pass.
+Expect the existing tests and all six new filter tests to pass before continuing.
 
 ## Connect the Filter to the Page
 
@@ -381,14 +340,8 @@ corepack yarn lint
 
 ## Return Revision State from the Controller
 
-The filter currently calculates revision state in the browser. Add that same
-calculation to the controller so API clients can use the controller's result.
-Keep selection and pagination in the UI. Add a response field without changing
-how the API filters results.
-
-You need the Go toolchain from `go/go.mod` (Go 1.27.3 at this revision), Make,
-and access to Buf's remote code-generation plugins. Run commands from the
-kagent repository root unless stated otherwise.
+Move the revision-state calculation to the controller and expose it in the
+API response. Keep filtering and pagination in the UI.
 
 ### 1. Add the Go Calculation
 
@@ -438,8 +391,7 @@ func RevisionState(agent *v1alpha3.Agent) string {
 }
 ```
 
-The handler calls this function. Test the calculation without a cluster or
-database. It reads Agent status and leaves the stored Agent unchanged.
+This function reads Agent status without changing it.
 
 ### 2. Add Go Tests
 
@@ -523,22 +475,15 @@ message Agent {
 }
 ```
 
-This adds a response field without changing existing field numbers or request
-types. Run the repository's generators; do not edit generated Go or TypeScript
-files by hand:
+Generate clients after adding the field:
 
 ```sh cwd=kagent
 make proto-lint proto-generate AWK=awk
 ```
 
-Generation may update clients for other languages too. Include those generated
-changes even though you will not edit the clients by hand.
-For upstream review, also run the repository's protobuf compatibility check
-against the agreed base revision.
-
-Run generation once after the proto edit. Subsequent builds use
-`BUILD_PROTO_GENERATE=` to reuse the generated files. If Buf reports a quota
-error, ask the presenter before retrying.
+Keep all generated changes; do not edit them by hand. Later builds use
+`BUILD_PROTO_GENERATE=` to reuse them. If Buf reports a quota error, ask the
+presenter before retrying.
 
 ### 4. Wire the Existing Agent Mapper
 
@@ -560,9 +505,7 @@ literal with:
   }, nil
 ```
 
-The shared mapper serves list, get, create, and update responses. Authorization
-and pagination still follow their existing paths. The original resource stays
-intact and no status is written back to Kubernetes.
+The shared mapper serves list, get, create, and update responses.
 
 ### 5. Check the API Response with a Generated Client
 
@@ -605,13 +548,6 @@ cd go
 go test ./core/internal/service/agentstatus ./core/internal/grpcserver -run 'TestRevisionState$|TestAgentService' -count=1 -v
 cd ..
 ```
-
-After the focused tests pass, run tests for the full affected packages before
-upstream review. Record failures separately; the wider gRPC suite covers other
-features too.
-If an envtest case reports a missing `etcd` executable, use the Go Makefile's
-`envtest-path` target to obtain its assets and set `KUBEBUILDER_ASSETS` to the
-printed path before rerunning. The focused tests above do not need envtest.
 
 ### 6. Read the Controller Value in the UI
 
@@ -671,9 +607,8 @@ function toAgent(agent: PbAgent): Agent {
 }
 ```
 
-The existing status display and your new filter both call `agentRevisionState`,
-so both now use the controller value. Old controllers return an empty field;
-the fallback keeps the UI working during the upgrade.
+The status display and filter now use the controller value. The fallback
+supports older controllers that return an empty field.
 
 In `ui/src/api/domain/agents.test.ts`, add `revisionStateFromApi` to the
 `./agents` import and append:
@@ -705,10 +640,9 @@ corepack yarn typecheck
 
 ## Install the Updated Controller and UI
 
-### 1. Finish the Warm-Up and Configure the Provider
+### 1. Wait for Builds and Configure the Provider
 
-Finish all code edits, generation, and focused tests first. Confirm that all
-three builds in the runtime-build terminal succeeded.
+Finish the exercises and confirm that all three runtime builds succeeded.
 
 The installer needs provider configuration even though the filter never calls
 a model. In the terminal where you will run the installation:
@@ -721,25 +655,21 @@ printf '\n'
 export OPENAI_API_KEY
 ```
 
-Enter your key at the hidden prompt in Bash or Zsh. The key is not part of the
-command history. Follow the checkout's development guide for another provider.
-Keep credentials out of tracked files, screenshots, and the PR.
+Enter your key at the hidden prompt in Bash or Zsh. Keep credentials out of
+tracked files and screenshots. For another provider, follow the checkout's
+development guide.
 
 ### 2. Build the Finished Images and Install Once
 
-Run from the kagent repository root. The `&&` prevents installation if either
-image build fails:
+Build both images, then install only if both builds succeed:
 
 ```sh cwd=kagent
 make build-controller build-ui VERSION=0.0.0-contribfest AWK=awk BUILD_PROTO_GENERATE= &&
 make kagent-cli-deploy VERSION=0.0.0-contribfest AWK=awk BUILD_PROTO_GENERATE=
 ```
 
-This builds the controller and UI with your finished changes, then installs
-them together. The UI Dockerfile runs `yarn build`, including type checking,
-so no separate production build is needed. The installer prepares the CLI,
-charts, PostgreSQL, Substrate, and certificate infrastructure.
-No rollout restart is needed on this first installation.
+The installer sets up the CLI, charts, PostgreSQL, Substrate, and certificates.
+No separate UI production build or rollout restart is needed.
 
 ### 3. Check the Installation
 
@@ -763,10 +693,8 @@ kubectl --context kind-kagent -n kagent port-forward --address 127.0.0.1 svc/kag
 
 ### 5. Create an Agent to Inspect
 
-The installer does not create Agent, AgentTemplate, or Harness resources.
-Create a small test Agent before checking the list response. It deliberately
-references missing resources, so it should become Failed after reconciliation;
-it will not start a conversation or call a model.
+Create a test Agent with missing references. It should become Failed without
+starting a conversation or calling a model.
 
 ```sh cwd=any
 kubectl --context kind-kagent -n kagent apply -f - <<'YAML'
@@ -798,19 +726,15 @@ go run github.com/bufbuild/buf/cmd/buf@v1.72.0 build proto --as-file-descriptor-
 grpcurl -plaintext -protoset /tmp/contribfest-api.binpb -d '{"namespace":"kagent"}' localhost:8083 kagent.api.v1.AgentService/ListAgents
 ```
 
-Build the descriptor set once. Reuse it for later grpcurl checks unless the
-proto changes; this is schema compilation, not another remote generation.
+Reuse the descriptor set unless the proto changes.
 
-Check for `revisionState` beside each returned Agent's `ref` and `resource`.
-The test Agent should report `failed` once its unresolved references are
-recorded; immediately after creation it may report `notReported` or `preparing`.
-An empty namespace can return only `{"page":{}}`: protobuf JSON omits the
-empty Agent array. That response confirms the RPC succeeded, but cannot verify
-the new field. Check `kubectl get agents.api.kagent.dev -n kagent` if it is empty.
+Check for `revisionState` beside each Agent's `ref` and `resource`. Expect
+`failed` for the test Agent after reconciliation; it may briefly report
+`notReported` or `preparing`. If the list is empty, check
+`kubectl get agents.api.kagent.dev -n kagent`.
 
-An old controller can still satisfy the UI fallback, so the filter working
-alone does not prove that the backend change is deployed. The descriptor-set
-command does not need reflection. Keep the controller bound to loopback.
+Verify the API field even if the UI works: its fallback also supports old
+controllers.
 
 ## Verify the UI Against kagent
 
@@ -827,8 +751,8 @@ On the Agents page:
 
 ### 2. Switch to the Cluster
 
-Stop Vite with Ctrl-C. Keep the controller forward on 8083 running. Start Vite
-again with mock mode explicitly disabled:
+Stop Vite with Ctrl-C, keep the controller forward running, and restart Vite
+with mock mode disabled:
 
 ```sh cwd=kagent/ui
 KAGENT_UI_ENABLE_MOCK=false corepack yarn dev --host 127.0.0.1
@@ -840,8 +764,7 @@ The Vite proxy targets the controller forward at `http://127.0.0.1:8083`.
 
 In the installed UI, prepare an agent with a valid Harness and template/model
 configuration using the [1.x first-agent guide](https://kagent.dev/docs/kagent/1.x/get-started/your-first-agent/).
-Wait for its successful revision. This gives you a Ready row without sending
-a chat message.
+Wait for its successful revision; no chat message is needed.
 
 Use the `workshop-pending` Agent created in the installation chapter
 as the non-ready row. Inspect its conditions:
@@ -850,26 +773,18 @@ as the non-ready row. Inspect its conditions:
 kubectl --context kind-kagent -n kagent get agent workshop-pending -o jsonpath='{.status.conditions}'
 ```
 
-The new row may initially show No status, then Failed after the controller
-reports unresolved references. It must not appear when only Ready is selected.
-Use the status shown by the page when testing the matching selection.
-
-Compare the page with the Agent conditions and revisions. No model invocation
-is needed to exercise the filter. Substrate still needs healthy Workers and
-snapshot storage to prepare a valid agent revision.
+Confirm the Ready filter hides `workshop-pending`. Select its displayed status
+to show it again. Compare the page with the Agent conditions and revisions.
+Preparing the valid Agent still requires healthy Substrate Workers and snapshot
+storage.
 
 ## Verify the Packaged UI
 
-### 1. Reuse the Image Already Installed
+Use the UI image already installed. No rebuild or reinstall is needed.
 
-The installation chapter already built and deployed your finished UI. Do not
-run another `yarn build`, image build, CLI build, or Helm install just to open
-it. Vite on port 8001 and the packaged UI on port 8082 are different checks
-of the same source changes.
+### 1. Open the Deployed Version
 
-### 2. Open the Deployed Version
-
-Stop any old UI forward and start this one:
+Start the UI forward in a separate terminal:
 
 ```sh cwd=any
 kubectl --context kind-kagent -n kagent port-forward --address 127.0.0.1 svc/kagent-ui 8082:8080
@@ -882,14 +797,10 @@ Port 8082 serves the packaged UI. Confirm the image in use:
 kubectl --context kind-kagent -n kagent get deployment kagent-ui -o jsonpath='{.spec.template.spec.containers[*].image}'
 ```
 
-If rollout fails, inspect pod events and logs. If a browser still shows the old
-page, check its port, refresh, and confirm that the rollout replaced the UI
-pod. These are development instructions for the disposable Kind cluster.
+### 2. Only If You Make More Edits
 
-### 3. Only If You Make More Edits
-
-Continue using Vite for UI iteration; no image rebuild is needed to preview
-a source edit there. When you need to verify a new packaged UI, run only
+Preview source edits in Vite without rebuilding images. To check a new
+packaged UI, run
 `make build-ui VERSION=0.0.0-contribfest AWK=awk BUILD_PROTO_GENERATE=`,
 then `kubectl --context kind-kagent -n kagent rollout restart deployment/kagent-ui`
 and await its rollout. Restart the UI forward after the old pod is replaced.
@@ -897,6 +808,5 @@ and await its rollout. Restart the UI forward after the old pod is replaced.
 For a controller-only edit, use
 `make build-controller VERSION=0.0.0-contribfest AWK=awk BUILD_PROTO_GENERATE=`
 and restart/await only `deployment/kagent-controller`, then restart its forward.
-Reuse the installed database, Substrate, runtime images, and charts.
-Only regenerate clients if the proto changed, and only rerun the installer
-if installation/chart configuration changed.
+Regenerate clients only if the proto changed. Rerun the installer only if
+installation or chart configuration changed.

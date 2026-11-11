@@ -68,7 +68,18 @@ const parts = guide.split(/^## /m).slice(1);
 if (parts.length !== titles.length) throw new Error('Update the chapter map to match the guide.');
 const chapters = parts.map((part, index) => {
   const [heading, ...lines] = part.split('\n');
-  return { id: ids[index], title: titles[index], heading: heading.replace(/^\d+\. /, ''), html: marked.parse(lines.join('\n')) };
+  const content = lines.join('\n').replace(
+    /<!-- setup:codespaces -->([\s\S]*?)<!-- setup:local -->([\s\S]*?)<!-- setup:end -->/,
+    (_, codespaces, local) => `<div class="setup-options">
+<div class="setup-tablist" aria-label="Workshop environment" hidden>
+<button type="button" id="setup-tab-codespaces" aria-controls="setup-panel-codespaces">GitHub Codespaces</button>
+<button type="button" id="setup-tab-local" aria-controls="setup-panel-local">VS Code (Local)</button>
+</div>
+<div id="setup-panel-codespaces" class="setup-panel">\n\n${codespaces.trim()}\n\n</div>
+<div id="setup-panel-local" class="setup-panel">\n\n${local.trim()}\n\n</div>
+</div>\n`,
+  );
+  return { id: ids[index], title: titles[index], heading: heading.replace(/^\d+\. /, ''), html: marked.parse(content) };
 });
 const navigation = chapters.map((chapter, index) => `<li><a href="#${chapter.id}" data-chapter="${chapter.id}"><span class="chapter-number">${String(index + 1).padStart(2, '0')}</span><span>${chapter.title}</span><i data-lucide="check" class="chapter-check" aria-hidden="true"></i></a></li>`).join('');
 const sections = chapters.map((chapter) => `<section id="${chapter.id}" class="lesson" aria-labelledby="heading-${chapter.id}"><h1 id="heading-${chapter.id}">${chapter.heading}</h1>${chapter.html}</section>`).join('\n');

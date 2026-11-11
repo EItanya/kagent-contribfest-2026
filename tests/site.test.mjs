@@ -67,7 +67,6 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()), '#6d28d9');
     assert.equal(await page.locator('nav a[aria-current="page"]').evaluate((element) => getComputedStyle(element).color), 'rgb(109, 40, 217)');
     assert.equal(await page.getByRole('heading', { name: 'Start Here', exact: true }).isVisible(), true);
-    assert.match(await page.locator('#feature').textContent(), /Dev Containers: Reopen in Container/);
     assert.match(await page.locator('#feature').textContent(), /do not\s+need to install/);
     assert.match(await page.locator('#feature').textContent(), /GitHub Codespaces in the browser/);
     assert.equal(await page.locator('.repository').getAttribute('target'), '_blank');
@@ -80,9 +79,25 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.locator('nav a[href="#install"]').click();
     await page.waitForFunction(() => document.title.startsWith('Prepare & warm builds'));
     assert.match(await page.title(), /^Prepare & warm builds/);
-    assert.equal(await page.getByRole('heading', { name: 'Option A: GitHub Codespaces in Your Browser', exact: true }).isVisible(), true);
-    assert.equal(await page.getByRole('heading', { name: 'Option B: Dev Containers in Local VS Code', exact: true }).isVisible(), true);
-    const copy = page.locator('.lesson:not([hidden]) .copy-button').first();
+    const codespacesTab = page.getByRole('tab', { name: 'GitHub Codespaces', exact: true });
+    const localTab = page.getByRole('tab', { name: 'VS Code (Local)', exact: true });
+    assert.equal(await codespacesTab.getAttribute('aria-selected'), 'true');
+    assert.equal(await page.getByRole('tabpanel', { name: 'GitHub Codespaces' }).isVisible(), true);
+    assert.equal(await page.locator('#setup-panel-local').isVisible(), false);
+    await localTab.click();
+    assert.equal(await localTab.getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('#setup-panel-codespaces').isVisible(), false);
+    assert.equal(await page.getByRole('heading', { name: 'Continue Here for Either Option' }).isVisible(), true);
+    await localTab.press('ArrowLeft');
+    assert.equal(await codespacesTab.evaluate((tab) => tab === document.activeElement), true);
+    assert.equal(await codespacesTab.getAttribute('aria-selected'), 'true');
+    await codespacesTab.press('End');
+    assert.equal(await localTab.getAttribute('aria-selected'), 'true');
+    await localTab.press('ArrowRight');
+    assert.equal(await codespacesTab.getAttribute('aria-selected'), 'true');
+    await codespacesTab.press('Home');
+    await localTab.click();
+    const copy = page.locator('.lesson:not([hidden]) .copy-button:visible').first();
     await copy.click();
     await page.waitForFunction(() => document.querySelector('.lesson:not([hidden]) .copy-button').getAttribute('aria-label') === 'Copied');
     assert.equal(await copy.getAttribute('aria-label'), 'Copied');
@@ -139,7 +154,7 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
       assert.equal(await page.locator('.lesson:not([hidden])').getAttribute('id'), id);
       if (id === 'install') {
         const content = await page.locator('#install').textContent();
-        assert.match(content, /make create-kind-cluster/);
+        assert.match(content, /cluster created during container startup/);
         assert.match(content, /make build-golang-adk build-claude-harness build-codex-harness VERSION=/);
         assert.doesNotMatch(content, /make kagent-cli-deploy VERSION=/);
         assert.doesNotMatch(content, /scripts\/get-kagent|kind create cluster --name/);
@@ -148,12 +163,12 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
         const content = await page.locator(`#${id}`).textContent();
         assert.match(content, /make kagent-cli-deploy/);
         assert.match(content, /make build-controller build-ui/);
-        assert.match(content, /No rollout restart is needed/);
+        assert.match(content, /No separate UI production build or rollout restart is needed/);
         assert.doesNotMatch(content, /kubectl[^\n]*patch deployment/);
       }
       if (id === 'deploy') {
         const content = await page.locator(`#${id}`).textContent();
-        assert.match(content, /already built and deployed your finished UI/);
+        assert.match(content, /UI image already installed/);
         assert.doesNotMatch(content, /make kagent-cli-deploy/);
         assert.doesNotMatch(content, /kubectl[^\n]*patch deployment/);
       }
@@ -169,6 +184,12 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
       for (const id of ['feature', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy']) {
         await page.goto(`http://127.0.0.1:${server.address().port}/#${id}`);
         await page.locator('.lesson:not([hidden])').waitFor();
+        if (id === 'install') {
+          await page.getByRole('tab', { name: 'VS Code (Local)', exact: true }).click();
+          assert.equal(await page.locator('#setup-panel-local').isVisible(), true);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Local setup overflow at ${width}px`);
+          await page.getByRole('tab', { name: 'GitHub Codespaces', exact: true }).click();
+        }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
         assert.equal(overflow, false, `Overflow at ${width}px in ${id}`);
       }
@@ -195,6 +216,10 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await direct.waitForFunction(() => document.title.startsWith('Connect the page'));
     assert.equal(await direct.locator('h1:visible').textContent(), 'Connect the Filter to the Page');
     assert.equal(await direct.locator('.brand img').evaluate((image) => image.complete && image.naturalWidth > 0), true);
+    await direct.emulateMedia({ media: 'print' });
+    assert.equal(await direct.locator('#setup-panel-local').isVisible(), true);
+    assert.equal(await direct.locator('#setup-panel-codespaces').isVisible(), true);
+    assert.equal(await direct.locator('.setup-tablist').isVisible(), false);
     await context.close();
   } finally {
     await browser?.close();

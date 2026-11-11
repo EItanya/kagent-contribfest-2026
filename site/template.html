@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e8eee9">
+  <meta name="description" content="Build and test an Agent status filter in kagent, add revision state to the controller API, and deploy the updated UI.">
+  <title>kagent · ContribFest</title>
+  <style>/* STYLES */</style>
+  <script defer src="assets/lucide.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to lesson</a>
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#feature" aria-label="kagent ContribFest home"><img src="assets/kagent.svg" alt="kagent" width="132" height="40"></a>
+    <div class="workshop-name">ContribFest</div>
+    <div class="search-field"><i data-lucide="search" aria-hidden="true"></i><input id="search" type="search" placeholder="Search chapters" aria-label="Search chapters" autocomplete="off"></div>
+    <nav aria-label="Workshop chapters"><ol><!-- NAVIGATION --></ol><p id="no-results" hidden>No chapters found.</p></nav>
+    <div class="sidebar-bottom"><progress id="progress" max="CHAPTER_COUNT" value="0" aria-label="Completed chapters"></progress><span id="progress-label">0 / CHAPTER_COUNT complete</span><a href="participant-guide.md" download><i data-lucide="download" aria-hidden="true"></i>Markdown</a></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><button class="icon-button menu-button" id="menu" aria-label="Open chapters" aria-expanded="false" aria-controls="sidebar" title="Chapters"><i data-lucide="menu"></i></button><span id="current-title">Project</span><div class="community-links"><a class="repository" href="https://github.com/kagent-dev/kagent" target="_blank" rel="noopener noreferrer"><i data-lucide="github" aria-hidden="true"></i><span>kagent-dev/kagent</span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a><a class="discord" href="https://discord.gg/Fu3k65f2k3" target="_blank" rel="noopener noreferrer" aria-label="kagent Discord" title="kagent Discord"><i data-lucide="messages-square" aria-hidden="true"></i><span>Discord</span></a></div></header>
+    <main id="content" tabindex="-1"><!-- LESSONS --></main>
+    <footer class="lesson-footer"><label class="completion"><input type="checkbox" id="complete"><span>Complete</span></label><div class="page-navigation"><a id="previous" class="icon-button" title="Previous chapter" aria-label="Previous chapter"><i data-lucide="arrow-left"></i></a><a id="next"><span>Checkout</span><i data-lucide="arrow-right" aria-hidden="true"></i></a></div></footer>
+  </div>
+  <div class="backdrop" id="backdrop" hidden></div>
+  <div role="status" id="announcement" class="sr-only" aria-live="polite"></div>
+  <noscript><style>.search-field,.lesson-footer,.menu-button{display:none!important}.lesson{display:block!important}.sidebar{position:static!important;transform:none!important}.workspace{margin:0!important}</style></noscript>
+  <script>window.addEventListener('DOMContentLoaded', () => { /* APPLICATION */ });</script>
+</body>
+</html>

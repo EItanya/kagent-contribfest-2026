@@ -1,8 +1,8 @@
 # kagent ContribFest: Filter Agents by Status
 
-One sequential lab: install kagent 1.x with Substrate, add a Status filter to
-the Agents page, return revision state from the controller, and deploy the
-updated controller and UI images into Kind.
+One sequential lab: warm runtime-image caches while adding a Status filter,
+return revision state from the controller, then build the finished controller
+and UI and install kagent 1.x with Substrate into Kind once.
 
 The backend adds a pure Go calculation and an additive `revision_state`
 response field. The UI uses it with an older-controller fallback. No database,
@@ -10,7 +10,7 @@ CRD, request-filter, pagination, or agent-runtime changes are needed.
 
 ## Materials
 
-- [Participant guide](participant-guide.md): follow its eleven chapters in order.
+- [Participant guide](participant-guide.md): follow its ten chapters in order.
 
 ## Participant setup
 
@@ -82,4 +82,3 @@ CI secret store instead of browser login; the account ID is already pinned.
 The token needs Pages edit permission for the chosen account. Never put it in
 the script or tracked configuration. Cloudflare Direct Upload projects do not
 switch to Git integration later; that would require a new Pages project.
-

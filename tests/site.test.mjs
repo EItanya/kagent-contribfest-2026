@@ -3,6 +3,36 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { marked } from 'marked';
+
+test('workshop builds only required images and installs once after the code exercises', async () => {
+  const guide = await readFile(new URL('../participant-guide.md', import.meta.url), 'utf8');
+  const chapters = new Map(guide.split(/^## /m).slice(1).map((chapter) => {
+    const newline = chapter.indexOf('\n');
+    return [chapter.slice(0, newline), chapter.slice(newline + 1)];
+  }));
+  const commands = (text) => marked.lexer(text)
+    .filter((token) => token.type === 'code' && token.lang?.startsWith('sh'))
+    .map((token) => token.text).join('\n');
+  const setup = commands(chapters.get('Prepare the Environment and Start Builds'));
+  const installation = commands(chapters.get('Install the Updated Controller and UI'));
+  const packaged = commands(chapters.get('Verify the Packaged UI'));
+  const all = commands(guide);
+  assert.match(setup, /make build-golang-adk build-claude-harness build-codex-harness VERSION=0\.0\.0-contribfest/);
+  assert.doesNotMatch(setup, /make (?:kagent-cli-deploy|build-controller|build-ui)\b/);
+  assert.match(installation, /make build-controller build-ui VERSION=0\.0\.0-contribfest AWK=awk BUILD_PROTO_GENERATE= &&\nmake kagent-cli-deploy/);
+  assert.equal((all.match(/^make kagent-cli-deploy\b/gm) ?? []).length, 1);
+  assert.equal((all.match(/^make build-golang-adk\b/gm) ?? []).length, 1);
+  assert.equal((all.match(/^make build-controller build-ui\b/gm) ?? []).length, 1);
+  assert.equal((all.match(/^corepack yarn install --immutable$/gm) ?? []).length, 1);
+  assert.equal((all.match(/^make proto-lint proto-generate AWK=awk$/gm) ?? []).length, 1);
+  assert.doesNotMatch(all, /^make (?:build(?:\s|$)|build-all\b|build-sandbox-guest\b|helm-dev\b|helm-install\b)|^corepack yarn build\b/m);
+  assert.doesNotMatch(all, /VERSION="\$VERSION"/);
+  assert.doesNotMatch(guide, /conference wi-fi|stale|old chart artifacts|presenter rehearsal/i);
+  assert.doesNotMatch(all, /^helm (?:template|uninstall|list)\b/m);
+  assert.doesNotMatch(packaged, /^make |rollout restart/m);
+  assert.ok(guide.indexOf('<!-- lab:backend-ui-tests -->') < guide.indexOf('make build-controller build-ui VERSION='));
+});
 
 test('workshop navigation, controls, persistence, and responsive layout', async () => {
   const root = new URL('../dist/', import.meta.url);
@@ -28,7 +58,8 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.locator('.lesson:not([hidden])').waitFor();
     assert.equal(await page.locator('.lesson:not([hidden])').count(), 1);
-    assert.equal(await page.locator('nav a').count(), 11);
+    assert.equal(await page.locator('nav a').count(), 10);
+    assert.equal(await page.locator('nav a[href="#contribute"]').count(), 0);
     assert.equal(await page.getByRole('link', { name: 'Session slides' }).count(), 0);
     assert.equal((await page.request.get(`http://127.0.0.1:${server.address().port}/slides.html`)).status(), 404);
     assert.equal(await page.locator('nav a[href="#python-runtime"]').count(), 0);
@@ -47,8 +78,8 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     assert.equal(await discord.getAttribute('rel'), 'noopener noreferrer');
     assert.equal(await discord.isVisible(), true);
     await page.locator('nav a[href="#install"]').click();
-    await page.waitForFunction(() => document.title.startsWith('Install kagent'));
-    assert.match(await page.title(), /^Install kagent/);
+    await page.waitForFunction(() => document.title.startsWith('Prepare & warm builds'));
+    assert.match(await page.title(), /^Prepare & warm builds/);
     assert.equal(await page.getByRole('heading', { name: 'Option A: GitHub Codespaces in Your Browser', exact: true }).isVisible(), true);
     assert.equal(await page.getByRole('heading', { name: 'Option B: Dev Containers in Local VS Code', exact: true }).isVisible(), true);
     const copy = page.locator('.lesson:not([hidden]) .copy-button').first();
@@ -66,13 +97,13 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.reload();
     assert.equal(await page.getByLabel('Complete', { exact: true }).isChecked(), true);
     assert.equal(await page.locator('.completion-fireworks').count(), 0);
-    assert.equal(await page.locator('#progress-label').textContent(), '1 / 11 complete');
+    assert.equal(await page.locator('#progress-label').textContent(), '1 / 10 complete');
     await page.getByLabel('Complete', { exact: true }).uncheck();
     assert.equal(await page.locator('.completion-fireworks').count(), 0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.getByLabel('Complete', { exact: true }).check();
     assert.equal(await page.locator('.completion-fireworks').count(), 0);
-    assert.equal(await page.locator('#progress-label').textContent(), '1 / 11 complete');
+    assert.equal(await page.locator('#progress-label').textContent(), '1 / 10 complete');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.locator('nav a[href="#function"]').click();
     const helperCode = page.locator('#function pre code.language-ts');
@@ -102,21 +133,28 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.getByRole('searchbox').fill('it("matches any selected state"');
     assert.equal(await page.locator('nav li:not([hidden])').count(), 1);
     await page.getByRole('searchbox').fill('');
-    for (const id of ['feature', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy', 'contribute']) {
+    for (const id of ['feature', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy']) {
       await page.locator(`nav a[href="#${id}"]`).click();
       await page.waitForFunction((id) => !document.getElementById(id).hidden, id);
       assert.equal(await page.locator('.lesson:not([hidden])').getAttribute('id'), id);
       if (id === 'install') {
         const content = await page.locator('#install').textContent();
         assert.match(content, /make create-kind-cluster/);
-        assert.match(content, /make build VERSION=/);
-        assert.match(content, /make kagent-cli-deploy VERSION=/);
+        assert.match(content, /make build-golang-adk build-claude-harness build-codex-harness VERSION=/);
+        assert.doesNotMatch(content, /make kagent-cli-deploy VERSION=/);
         assert.doesNotMatch(content, /scripts\/get-kagent|kind create cluster --name/);
       }
-      if (id === 'deploy-controller' || id === 'deploy') {
+      if (id === 'deploy-controller') {
         const content = await page.locator(`#${id}`).textContent();
         assert.match(content, /make kagent-cli-deploy/);
-        assert.match(content, /rollout restart deployment\/kagent-/);
+        assert.match(content, /make build-controller build-ui/);
+        assert.match(content, /No rollout restart is needed/);
+        assert.doesNotMatch(content, /kubectl[^\n]*patch deployment/);
+      }
+      if (id === 'deploy') {
+        const content = await page.locator(`#${id}`).textContent();
+        assert.match(content, /already built and deployed your finished UI/);
+        assert.doesNotMatch(content, /make kagent-cli-deploy/);
         assert.doesNotMatch(content, /kubectl[^\n]*patch deployment/);
       }
     }

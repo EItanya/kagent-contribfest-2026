@@ -62,8 +62,8 @@ marked.use({
   },
 });
 
-const titles = ['What you will build', 'Install kagent', 'Run the UI', 'Add the function', 'Write the tests', 'Connect the page', 'Controller status', 'Deploy controller', 'Verify live', 'Build & deploy UI', 'Review & contribute'];
-const ids = ['feature', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy', 'contribute'];
+const titles = ['What you will build', 'Prepare & warm builds', 'Run the UI', 'Add the function', 'Write the tests', 'Connect the page', 'Controller status', 'Install finished images', 'Verify live', 'Verify packaged UI'];
+const ids = ['feature', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy'];
 const parts = guide.split(/^## /m).slice(1);
 if (parts.length !== titles.length) throw new Error('Update the chapter map to match the guide.');
 const chapters = parts.map((part, index) => {

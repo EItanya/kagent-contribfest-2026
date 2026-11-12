@@ -46,156 +46,8 @@ Choose GitHub Codespaces in the browser or VS Code locally with Docker and
 the Dev Containers extension. Both use the kagent Dev Container; you do not
 need to install Go, Node, or Kubernetes tools on your host.
 
-The next two chapters introduce kagent. Setup starts in the chapter after
-them; skip ahead if you already know kagent 1.x.
-
-## kagent in Brief
-
-kagent is a Kubernetes-native framework for building, deploying, and managing
-AI agents. It is a Cloud Native Computing Foundation project. You describe
-agents as Kubernetes resources; kagent prepares them, runs them, and exposes
-them to people and other programs.
-
-### Components
-
-| Component | Role |
-| --- | --- |
-| Controller | Watches kagent resources, prepares agents to run, and manages their sessions. Serves the gRPC, A2A, and MCP APIs. |
-| UI | Web app for managing agents and tools and for chatting with agents. It calls the controller over gRPC-Web. |
-| CLI | Command-line access to the same controller APIs. |
-| Substrate | Runs agent processes as Actors and handles suspension, resumption, and snapshots. |
-| Agent runtimes | The process inside an Actor: the kagent Go or Python ADK, Codex, Claude, or your own image. |
-| PostgreSQL | Stores sessions, tasks, and conversation history so they outlive the running agent. |
-
-The UI and CLI never talk to an agent directly. Requests go to the controller,
-which routes them to the right Actor through Substrate.
-
-### Resources You Author
-
-These are `api.kagent.dev/v1alpha3` Kubernetes resources:
-
-| Resource | Answers | Contains |
-| --- | --- | --- |
-| `AgentTemplate` | What does the agent do? | Model, description, system prompt, MCP tools, skills, plugins, and subagents. |
-| `Harness` | How does it run? | One runtime (kagent, Codex, Claude, or bring-your-own), an optional image override, the WorkerPool, and the snapshot location. |
-| `Agent` | Which behavior runs on which runtime? | A template, inline or by reference, plus a `harnessRef`. Its status reports readiness. |
-| `ModelConfig` | Which model? | Provider, model name, and endpoint settings. |
-| `RemoteMCPServer` | Which tools? | An MCP server that agents can connect to. |
-
-Splitting behavior from execution lets a platform team own Harnesses while
-agent authors own templates. The same template can run on any compatible
-Harness.
-
-A minimal Agent with an inline template looks like this. You do not need to
-apply it; the lab creates its own agents later.
-
-```yaml
-apiVersion: api.kagent.dev/v1alpha3
-kind: Harness
-metadata:
-  name: assistant
-  namespace: kagent
-spec:
-  kagent: {}
-  substrate:
-    workerPoolRef:
-      name: kagent-default
-    snapshotPolicy:
-      location: s3://ate-snapshots/kagent
----
-apiVersion: api.kagent.dev/v1alpha3
-kind: Agent
-metadata:
-  name: assistant
-  namespace: kagent
-spec:
-  template:
-    inline:
-      modelConfig:
-        name: default-model-config
-      description: A general-purpose assistant.
-      systemPrompt: You are a helpful assistant running on kagent.
-  harnessRef:
-    name: assistant
-```
-
-### What Is Not a Kubernetes Resource
-
-Sessions, tasks, conversation history, and checkpoints live in PostgreSQL and
-are reached through the controller's APIs. `kubectl get` will not show them.
-
-### Ways In
-
-| Surface | Used for |
-| --- | --- |
-| Kubernetes API | Authoring Agents, Harnesses, AgentTemplates, models, and MCP servers. |
-| gRPC and gRPC-Web | Listing agents and managing sessions. The Agents page you will change reads from here. |
-| A2A | Sending messages to an agent and streaming its task events. |
-| MCP | Letting other agents and tools discover and invoke kagent agents. |
-
-## How an Agent Becomes Ready
-
-Applying an Agent does not start a process that waits for chats. The controller
-first turns the Agent into a prepared revision. The Status filter you will
-build reports where each Agent is in that process.
-
-### From Resource to Revision
-
-1. **Resolve.** The controller reads the Agent's template and Harness, plus
-   everything they reference: models, MCP servers, subagent templates.
-2. **Compile.** The Harness's runtime compiler turns those inputs into an
-   immutable revision: image, configuration, capacity, and snapshot settings.
-3. **Apply.** The controller registers the revision with Substrate.
-4. **Snapshot.** Substrate boots one "golden" instance of the runtime and
-   snapshots it once it is ready.
-5. **Succeed.** The Agent's `latestSuccessfulRevision` moves to the new
-   revision.
-
-Every edit to the Agent, its template, or its Harness repeats these steps for a
-new revision. Step 4 commonly takes a minute or more.
-
-### What the Agent Reports
-
-The controller writes the result to the Agent's `status`:
-
-| Field | Meaning |
-| --- | --- |
-| `observedGeneration` | The latest spec generation the controller has processed. |
-| `desiredRevision` | The revision compiled from the current configuration. |
-| `latestSuccessfulRevision` | The newest revision that finished all five steps. |
-| `conditions` | `Accepted`, `ResolvedRefs`, `Compatible`, and `Ready`, plus `EgressPoliciesApplied`. |
-
-A missing template or Harness sets `ResolvedRefs=False`. A template the chosen
-runtime cannot run sets `Compatible=False`. `Ready=False` with reason
-`ActorTemplatePending` means the snapshot is still being taken; that is
-progress, not failure.
-
-The six states in the first chapter's table come from these fields. An
-Agent with a successful revision and a failing newer one is Update failed; one
-with no successful revision yet is Preparing or Failed.
-
-### Sessions Use the Last Good Revision
-
-A Session is one conversation. It is created from the Agent's latest
-successful revision and stays pinned to it.
-
-- A pending or failed edit does not break running Sessions or block new ones.
-  They use the previous successful revision.
-- An Agent with no successful revision cannot start a Session.
-- New Sessions pick up a change only after its revision succeeds.
-
-Substrate suspends a Session's Actor when it goes idle and resumes it on the
-next message, so idle conversations do not hold compute.
-
-### Where This Lab Touches the Code
-
-| Path | What lives there | In this lab |
-| --- | --- | --- |
-| `ui/` | The web UI | Add the filter function, its tests, and the Status control. |
-| `go/core/internal/service` | Controller services and workflows | Add the Go revision-state calculation. |
-| `go/core/internal/grpcserver` | gRPC handlers | Fill the new field when mapping an Agent. |
-| `proto/` | gRPC API definitions | Add the `revision_state` response field. |
-| `go/api/v1alpha3` | Kubernetes API types | Read only; no CRD change. |
+Start setup in the next chapter. While the environment and builds run, read
+the two kagent chapters after it; skip them if you already know kagent 1.x.
 
 ## Prepare the Environment and Start Builds
 
@@ -255,13 +107,381 @@ Expect a Ready node and entries for `PodCertificateRequest` and
 ### 3. Start the Runtime Builds While You Code
 
 Run this in a separate terminal at the repository root, then continue to the
-next chapter without waiting. No provider key is needed yet.
+next chapters without waiting. No provider key is needed yet.
 
 ```sh cwd=kagent
 make build-golang-adk build-claude-harness build-codex-harness VERSION=0.0.0-contribfest AWK=awk BUILD_PROTO_GENERATE=
 ```
 
 The chart requires all three runtime images. Build them once.
+
+## How kagent Works
+
+kagent runs AI agents on Kubernetes. You describe an agent in YAML. kagent
+turns that description into something ready to boot, gives each conversation
+its own isolated copy of the agent, and puts that copy to sleep when the
+conversation goes quiet.
+
+This chapter introduces the pieces and follows one conversation through them.
+The next chapter covers what this lab changes: how an Agent becomes ready and
+how its status reports that.
+
+<figure class="diagram" role="img" aria-label="Clients call the kagent controller. The controller reads agent resources from the Kubernetes API, stores conversations in PostgreSQL, and runs agents as Substrate Actors booted from a golden snapshot. An animated message travels from a client through the controller and wakes a suspended Actor.">
+<svg viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+<rect x="250" y="10" width="260" height="52" rx="6" class="d-box"/>
+<text x="380" y="34" class="d-title">UI · CLI · other agents</text>
+<text x="380" y="52" class="d-note">never talk to an agent directly</text>
+<line x1="380" y1="62" x2="380" y2="118" class="d-line" marker-end="url(#arrow)"/>
+<text x="390" y="95" class="d-label d-start">gRPC-Web · A2A · MCP</text>
+<rect x="10" y="120" width="200" height="84" rx="6" class="d-box"/>
+<text x="110" y="148" class="d-title">Kubernetes API</text>
+<text x="110" y="170" class="d-note">Agent · AgentTemplate</text>
+<text x="110" y="188" class="d-note">Harness · ModelConfig</text>
+<rect x="280" y="120" width="200" height="84" rx="6" class="d-box d-focus d-pulse"/>
+<text x="380" y="148" class="d-title">kagent controller</text>
+<text x="380" y="170" class="d-note">prepares agents</text>
+<text x="380" y="188" class="d-note">serves APIs · routes chats</text>
+<rect x="550" y="120" width="200" height="84" rx="6" class="d-box"/>
+<text x="650" y="148" class="d-title">PostgreSQL</text>
+<text x="650" y="170" class="d-note">sessions · tasks</text>
+<text x="650" y="188" class="d-note">conversation history</text>
+<line x1="210" y1="162" x2="278" y2="162" class="d-line" marker-end="url(#arrow)"/>
+<text x="244" y="154" class="d-label">watch</text>
+<line x1="480" y1="162" x2="548" y2="162" class="d-line" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="514" y="154" class="d-label">store</text>
+<line x1="380" y1="204" x2="380" y2="258" class="d-line" marker-end="url(#arrow)"/>
+<text x="390" y="236" class="d-label d-start">prepare revisions · create and route to Actors</text>
+<rect x="10" y="260" width="740" height="130" rx="8" class="d-group"/>
+<text x="26" y="284" class="d-title d-start">Substrate</text>
+<rect x="30" y="300" width="170" height="70" rx="6" class="d-box"/>
+<text x="115" y="328" class="d-title">Golden snapshot</text>
+<text x="115" y="348" class="d-note">one per revision</text>
+<line x1="200" y1="335" x2="246" y2="335" class="d-line" marker-end="url(#arrow)"/>
+<text x="223" y="327" class="d-label">boots</text>
+<rect x="250" y="300" width="155" height="70" rx="6" class="d-box"/>
+<text x="327" y="328" class="d-title">Actor</text>
+<text x="327" y="348" class="d-note">session 1 · running</text>
+<rect x="420" y="300" width="155" height="70" rx="6" class="d-box"/>
+<text x="497" y="328" class="d-title">Actor</text>
+<text x="497" y="348" class="d-note">session 2 · running</text>
+<rect x="590" y="300" width="145" height="70" rx="6" class="d-box d-idle"/>
+<rect x="590" y="300" width="145" height="70" rx="6" class="d-wake"/>
+<text x="662" y="328" class="d-title">Actor</text>
+<text x="662" y="348" class="d-note d-asleep">session 3 · suspended</text>
+<text x="662" y="348" class="d-note d-awake">session 3 · running</text>
+<circle r="7" class="d-message"/>
+</svg>
+<figcaption>A new message goes through the controller and wakes session 3's suspended Actor.</figcaption>
+</figure>
+
+### The Pieces
+
+- **Controller.** The center of kagent and the component you will change in
+  this lab. It watches the agent resources you apply, prepares them to run,
+  and serves the APIs that the UI, CLI, and other programs use. Only the
+  controller talks to Substrate.
+- **UI and CLI.** Clients of the controller. The UI is a React app that calls
+  the controller over gRPC-Web. The Agents page you will change gets its list
+  of agents this way.
+- **Substrate.** A separate project that runs agent processes. It runs each one
+  as an **Actor**: an isolated runtime process with a private disk mounted at
+  `/data`. Substrate can snapshot an Actor, suspend it, and resume it from that
+  snapshot. Actors run on the workers of a Substrate **WorkerPool**.
+- **Agent runtime.** The program inside an Actor: kagent's Go or Python ADK,
+  Codex, Claude, or your own image.
+- **PostgreSQL.** Stores everything that is not configuration: sessions,
+  tasks, and conversation history. History lives here and not inside the
+  Actor, so an Actor can be suspended or replaced without losing the
+  conversation.
+
+### Describing an Agent
+
+You describe an agent with three `api.kagent.dev/v1alpha3` Kubernetes
+resources. The split follows who usually owns each part:
+
+- **AgentTemplate:** *what the agent does*. Model, system prompt, MCP tools,
+  skills, and subagents. Agent authors write these.
+- **Harness:** *how it runs*. One runtime (kagent, Codex, Claude, or your own
+  image), the WorkerPool, and where snapshots are stored. Platform teams
+  write these. `kagent install` creates three you can use right away:
+  `kagent-default`, `codex-default`, and `claude-default`.
+- **Agent:** the thing you chat with. It pairs one template, inline or by
+  reference to an AgentTemplate, with one Harness through `harnessRef`. Its
+  `status` reports whether it is ready.
+
+Two supporting resources fill in the details: a **ModelConfig** names a model
+provider and endpoint, and a **RemoteMCPServer** names a tool server agents can
+use. The same template can run on any compatible Harness.
+
+A minimal Agent with an inline template, running on a default Harness. You do
+not need to apply it; the lab creates its own agents later.
+
+```yaml
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: assistant
+  namespace: kagent
+spec:
+  template:
+    inline:
+      modelConfig:
+        name: default-model-config
+      description: A general-purpose assistant.
+      systemPrompt: You are a helpful assistant running on kagent.
+  harnessRef:
+    name: kagent-default
+```
+
+### Following One Conversation
+
+1. **You apply the Agent.** The controller compiles it into a **revision**,
+   then has Substrate boot it once and save a **golden snapshot** of the
+   started runtime. Until that succeeds, nobody can chat with the Agent. The
+   next chapter covers this step.
+2. **Someone starts a chat.** The controller creates a **Session**: a
+   PostgreSQL record pinned to the Agent's latest successful revision, with its
+   own Actor created from that revision.
+3. **They send a message.** It goes to the controller over A2A, and the
+   controller routes it to that Session's Actor. Clients never learn the
+   Actor's address.
+4. **The agent works.** The runtime calls the model and tools, saves task
+   progress and history to PostgreSQL through the controller, and streams
+   events back to the client.
+5. **The conversation goes quiet.** Substrate suspends the Actor and saves its
+   `/data` disk. The next message resumes it, so idle conversations use no
+   compute.
+
+<figure class="diagram" role="img" aria-label="Sequence diagram with four columns: Client, Controller, PostgreSQL, and Substrate. Step 1: you apply the Agent through Kubernetes; the controller compiles a revision and Substrate saves a golden snapshot. Step 2: a chat starts; the controller stores a Session pinned to the revision and creates an Actor. Step 3: a message arrives over A2A and the controller routes it to the Actor. Step 4: the Actor reports progress, the controller saves it and streams events to the client. Step 5: the idle Actor is suspended, and the next message resumes it. A highlight moves through the steps in order.">
+<svg viewBox="0 0 760 425" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow-seq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+<rect x="8" y="60" width="744" height="76" rx="6" class="d-band d-band-1"/>
+<rect x="8" y="140" width="744" height="66" rx="6" class="d-band d-band-2"/>
+<rect x="8" y="210" width="744" height="52" rx="6" class="d-band d-band-3"/>
+<rect x="8" y="266" width="744" height="70" rx="6" class="d-band d-band-4"/>
+<rect x="8" y="340" width="744" height="78" rx="6" class="d-band d-band-5"/>
+<rect x="40" y="10" width="140" height="40" rx="6" class="d-box"/><text x="110" y="35" class="d-title">Client</text>
+<rect x="230" y="10" width="140" height="40" rx="6" class="d-box d-focus"/><text x="300" y="35" class="d-title">Controller</text>
+<rect x="420" y="10" width="140" height="40" rx="6" class="d-box"/><text x="490" y="35" class="d-title">PostgreSQL</text>
+<rect x="600" y="10" width="140" height="40" rx="6" class="d-box"/><text x="670" y="35" class="d-title">Substrate</text>
+<line x1="110" y1="50" x2="110" y2="418" class="d-life"/>
+<line x1="300" y1="50" x2="300" y2="418" class="d-life"/>
+<line x1="490" y1="50" x2="490" y2="418" class="d-life"/>
+<line x1="670" y1="50" x2="670" y2="418" class="d-life"/>
+<circle cx="28" cy="98" r="11" class="d-badge"/><text x="28" y="102" class="d-badge-text">1</text>
+<circle cx="28" cy="173" r="11" class="d-badge"/><text x="28" y="177" class="d-badge-text">2</text>
+<circle cx="28" cy="236" r="11" class="d-badge"/><text x="28" y="240" class="d-badge-text">3</text>
+<circle cx="28" cy="301" r="11" class="d-badge"/><text x="28" y="305" class="d-badge-text">4</text>
+<circle cx="28" cy="379" r="11" class="d-badge"/><text x="28" y="383" class="d-badge-text">5</text>
+<line x1="110" y1="85" x2="298" y2="85" class="d-line" marker-end="url(#arrow-seq)"/><text x="205" y="79" class="d-label">apply Agent (via Kubernetes)</text>
+<line x1="300" y1="106" x2="668" y2="106" class="d-line" marker-end="url(#arrow-seq)"/><text x="310" y="100" class="d-label d-start">compile revision, boot it once</text>
+<line x1="670" y1="127" x2="302" y2="127" class="d-line" marker-end="url(#arrow-seq)"/><text x="500" y="121" class="d-label d-start">golden snapshot saved</text>
+<line x1="110" y1="160" x2="298" y2="160" class="d-line" marker-end="url(#arrow-seq)"/><text x="205" y="154" class="d-label">start chat</text>
+<line x1="300" y1="179" x2="488" y2="179" class="d-line" marker-end="url(#arrow-seq)"/><text x="395" y="173" class="d-label">store pinned Session</text>
+<line x1="300" y1="198" x2="668" y2="198" class="d-line" marker-end="url(#arrow-seq)"/><text x="500" y="192" class="d-label d-start">create Actor</text>
+<line x1="110" y1="232" x2="298" y2="232" class="d-line" marker-end="url(#arrow-seq)"/><text x="205" y="226" class="d-label">message over A2A</text>
+<line x1="300" y1="252" x2="668" y2="252" class="d-line" marker-end="url(#arrow-seq)"/><text x="500" y="246" class="d-label d-start">route to its Actor</text>
+<line x1="670" y1="287" x2="302" y2="287" class="d-line" marker-end="url(#arrow-seq)"/><text x="500" y="281" class="d-label d-start">progress, history</text>
+<line x1="300" y1="307" x2="488" y2="307" class="d-line" marker-end="url(#arrow-seq)"/><text x="395" y="301" class="d-label">save</text>
+<line x1="300" y1="327" x2="112" y2="327" class="d-line" marker-end="url(#arrow-seq)"/><text x="205" y="321" class="d-label">stream events</text>
+<rect x="585" y="348" width="170" height="28" rx="5" class="d-box d-idle"/><text x="670" y="367" class="d-note">idle: suspend, save /data</text>
+<line x1="110" y1="402" x2="298" y2="402" class="d-line" marker-end="url(#arrow-seq)"/><text x="205" y="396" class="d-label">next message</text>
+<line x1="300" y1="402" x2="668" y2="402" class="d-line" marker-end="url(#arrow-seq)"/><text x="500" y="396" class="d-label d-start">resume Actor</text>
+</svg>
+<figcaption>The numbers match the steps above. After step 1, the client talks only to the controller.</figcaption>
+</figure>
+
+So configuration lives in Kubernetes, conversations live in PostgreSQL, and
+running agents live in Substrate. `kubectl get agents` lists Agents, but no
+`kubectl` command lists Sessions or chat history; those come from the
+controller's APIs.
+
+### Ways In
+
+| Surface | Used for |
+| --- | --- |
+| Kubernetes API | Writing Agents, Harnesses, AgentTemplates, models, and MCP servers. |
+| gRPC and gRPC-Web | Listing agents and managing Sessions. The Agents page you will change reads from here. |
+| A2A | Sending messages to an agent and streaming its progress. |
+| MCP | Letting other agents and tools find and call kagent agents. |
+
+## How an Agent Becomes Ready
+
+Applying an Agent does not start a process that waits for chats. First the
+controller has to prepare a revision, which commonly takes a minute or more.
+The Status filter you will build groups Agents by where they are in that
+process. This chapter explains each state and where it comes from.
+
+### Preparing a Revision
+
+A **revision** is an immutable, compiled copy of everything needed to run the
+Agent. The controller prepares one in five steps:
+
+1. **Resolve.** Read the Agent's template and Harness, plus everything they
+   reference: models, MCP servers, subagent templates.
+2. **Compile.** The Harness's runtime turns those inputs into the revision:
+   image, configuration, capacity, and snapshot settings.
+3. **Apply.** Register the revision with Substrate.
+4. **Snapshot.** Substrate boots one instance of the runtime and saves the
+   golden snapshot once it is ready. This is the slow step.
+5. **Succeed.** Record the new revision as the Agent's
+   `latestSuccessfulRevision`.
+
+<figure class="diagram" role="img" aria-label="Five steps in a row: Resolve, Compile, Apply, Snapshot, and Succeed. Every edit starts again at Resolve. A highlight moves through the steps and stays longest on Snapshot.">
+<svg viewBox="0 0 770 160" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow-pipe" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+<rect x="10" y="20" width="124" height="70" rx="6" class="d-box"/>
+<rect x="167" y="20" width="124" height="70" rx="6" class="d-box"/>
+<rect x="324" y="20" width="124" height="70" rx="6" class="d-box"/>
+<rect x="481" y="20" width="124" height="70" rx="6" class="d-box"/>
+<rect x="638" y="20" width="124" height="70" rx="6" class="d-box"/>
+<rect x="0" y="20" width="124" height="70" rx="6" class="d-cursor d-cursor-pipe"/>
+<line x1="134" y1="55" x2="165" y2="55" class="d-line" marker-end="url(#arrow-pipe)"/>
+<line x1="291" y1="55" x2="322" y2="55" class="d-line" marker-end="url(#arrow-pipe)"/>
+<line x1="448" y1="55" x2="479" y2="55" class="d-line" marker-end="url(#arrow-pipe)"/>
+<line x1="605" y1="55" x2="636" y2="55" class="d-line" marker-end="url(#arrow-pipe)"/>
+<text x="72" y="50" class="d-title">1 Resolve</text><text x="72" y="70" class="d-note">read references</text>
+<text x="229" y="50" class="d-title">2 Compile</text><text x="229" y="70" class="d-note">build revision</text>
+<text x="386" y="50" class="d-title">3 Apply</text><text x="386" y="70" class="d-note">send to Substrate</text>
+<text x="543" y="50" class="d-title">4 Snapshot</text><text x="543" y="70" class="d-note">boot once, save</text>
+<text x="700" y="50" class="d-title">5 Succeed</text><text x="700" y="70" class="d-note">update status</text>
+<path d="M700 90V125H72V92" class="d-line d-fill-none" marker-end="url(#arrow-pipe)"/>
+<text x="386" y="145" class="d-label">every edit starts again for a new revision</text>
+</svg>
+<figcaption>Step 4 is the slow one. While it runs, the Agent reports <code>Ready=False</code> with reason <code>ActorTemplatePending</code>.</figcaption>
+</figure>
+
+Every change to the Agent, its template, its Harness, or anything they
+reference starts this again for a new revision.
+
+### Edits Never Break Running Conversations
+
+Each Session stays pinned to the revision it started on, and new Sessions
+always start from the latest *successful* revision. So:
+
+- While a new revision is being prepared, or after it fails, chats keep
+  working on the previous successful revision.
+- New Sessions pick up a change only after its revision succeeds.
+- An Agent with no successful revision yet cannot start a Session.
+
+<figure class="diagram" role="img" aria-label="Three revisions of one Agent. Revisions 1 and 2 succeeded; revision 3 failed. Session A is pinned to revision 1 and Session B to revision 2. A new session starts on revision 2, the latest successful revision.">
+<svg viewBox="0 0 760 245" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow-pin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+<text x="380" y="34" class="d-label">latestSuccessfulRevision</text>
+<text x="640" y="34" class="d-label">desiredRevision</text>
+<rect x="40" y="45" width="160" height="64" rx="6" class="d-box"/>
+<text x="120" y="72" class="d-title">Revision 1</text><text x="120" y="92" class="d-note">succeeded</text>
+<rect x="300" y="45" width="160" height="64" rx="6" class="d-box d-focus"/>
+<text x="380" y="72" class="d-title">Revision 2</text><text x="380" y="92" class="d-note">succeeded</text>
+<rect x="560" y="45" width="160" height="64" rx="6" class="d-box d-error"/>
+<text x="640" y="72" class="d-title">Revision 3</text><text x="640" y="92" class="d-note d-error-text">failed: bad reference</text>
+<line x1="200" y1="77" x2="298" y2="77" class="d-line" marker-end="url(#arrow-pin)"/><text x="249" y="69" class="d-label">edit</text>
+<line x1="460" y1="77" x2="558" y2="77" class="d-line" marker-end="url(#arrow-pin)"/><text x="509" y="69" class="d-label">edit</text>
+<rect x="40" y="175" width="160" height="56" rx="6" class="d-box"/>
+<text x="120" y="199" class="d-title">Session A</text><text x="120" y="218" class="d-note">started on rev 1</text>
+<rect x="300" y="175" width="160" height="56" rx="6" class="d-box"/>
+<text x="380" y="199" class="d-title">Session B</text><text x="380" y="218" class="d-note">started on rev 2</text>
+<rect x="560" y="175" width="160" height="56" rx="6" class="d-box d-idle d-focus"/>
+<text x="640" y="199" class="d-title">New session</text><text x="640" y="218" class="d-note">starts on rev 2</text>
+<line x1="120" y1="175" x2="120" y2="111" class="d-line" marker-end="url(#arrow-pin)"/><text x="130" y="148" class="d-label d-start">pinned</text>
+<line x1="380" y1="175" x2="380" y2="111" class="d-line" marker-end="url(#arrow-pin)"/><text x="390" y="148" class="d-label d-start">pinned</text>
+<line x1="600" y1="175" x2="424" y2="111" class="d-line d-flow" marker-end="url(#arrow-pin)"/>
+</svg>
+<figcaption>Revision 3 failed, so the Agent shows Update failed. Existing sessions keep their revisions, and new ones start on revision 2.</figcaption>
+</figure>
+
+As a result, an Agent can be usable and out of date at the same time, which is
+why the filter has six states and not just "ready" and "not ready". An Agent in
+Update failed still accepts new chats, but it is not running the configuration
+you last applied.
+
+### What the Agent Reports
+
+The controller writes its progress to the Agent's `status`:
+
+| Field | Meaning |
+| --- | --- |
+| `observedGeneration` | The last spec generation the controller has processed. If it is lower than `metadata.generation`, the controller has not yet seen the latest edit. |
+| `desiredRevision` | The revision compiled from the current configuration. |
+| `latestSuccessfulRevision` | The newest revision that finished all five steps. New Sessions start here. |
+| `conditions` | `Accepted`, `ResolvedRefs`, `Compatible`, and `Ready`, plus `EgressPoliciesApplied`. |
+
+A condition set to `False` usually means something went wrong. A missing
+template or Harness sets `ResolvedRefs=False`. A template the chosen runtime
+cannot run sets `Compatible=False`. There are two exceptions:
+
+- `Ready=False` with reason `ActorTemplatePending` means the golden snapshot
+  is still being taken. That is progress, not failure.
+- `EgressPoliciesApplied=False` means a requested network grant was rejected.
+  It is reported separately and never fails the revision.
+
+### One Agent, Start to Finish
+
+Here is how one Agent's state changes as you work with it:
+
+<figure class="diagram" role="img" aria-label="State graph. Preparing becomes Ready when the snapshot is saved, or Failed if preparation fails. Ready becomes Updating after an edit. Updating returns to Ready if the new revision succeeds, or becomes Update failed if it fails. Update failed returns to Ready once a fix succeeds. A highlight follows the path in the table below.">
+<svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow-state" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-arrowhead"/></marker></defs>
+<rect x="30" y="30" width="160" height="56" rx="6" class="d-box"/>
+<rect x="300" y="30" width="160" height="56" rx="6" class="d-box"/>
+<rect x="570" y="30" width="160" height="56" rx="6" class="d-box"/>
+<rect x="30" y="170" width="160" height="56" rx="6" class="d-box d-error"/>
+<rect x="570" y="170" width="160" height="56" rx="6" class="d-box d-error"/>
+<rect x="0" y="0" width="160" height="56" rx="6" class="d-cursor d-cursor-state"/>
+<text x="110" y="54" class="d-title">Preparing</text><text x="110" y="73" class="d-note">cannot chat yet</text>
+<text x="380" y="54" class="d-title">Ready</text><text x="380" y="73" class="d-note">chats use latest</text>
+<text x="650" y="54" class="d-title">Updating</text><text x="650" y="73" class="d-note">chats use previous</text>
+<text x="110" y="194" class="d-title">Failed</text><text x="110" y="213" class="d-note">cannot chat</text>
+<text x="650" y="194" class="d-title">Update failed</text><text x="650" y="213" class="d-note">chats use previous</text>
+<line x1="190" y1="58" x2="298" y2="58" class="d-line" marker-end="url(#arrow-state)"/><text x="244" y="50" class="d-label">snapshot saved</text>
+<line x1="460" y1="48" x2="568" y2="48" class="d-line" marker-end="url(#arrow-state)"/><text x="514" y="40" class="d-label">you edit</text>
+<line x1="568" y1="70" x2="462" y2="70" class="d-line" marker-end="url(#arrow-state)"/><text x="514" y="88" class="d-label">succeeds</text>
+<line x1="110" y1="86" x2="110" y2="168" class="d-line" marker-end="url(#arrow-state)"/><text x="120" y="131" class="d-label d-start">fails</text>
+<line x1="650" y1="86" x2="650" y2="168" class="d-line" marker-end="url(#arrow-state)"/><text x="660" y="131" class="d-label d-start">fails</text>
+<path d="M568 198H380V88" class="d-line d-fill-none" marker-end="url(#arrow-state)"/><text x="474" y="190" class="d-label">fix succeeds</text>
+</svg>
+<figcaption>The highlight follows the table below. No status, not shown, means the controller has reported nothing yet.</figcaption>
+</figure>
+
+| What happens | What the status shows | State |
+| --- | --- | --- |
+| You apply a new Agent. | No successful revision yet; snapshot pending. | Preparing |
+| The snapshot finishes. | `latestSuccessfulRevision` equals `desiredRevision`; no failing conditions. | Ready |
+| You edit the system prompt. | A new `desiredRevision` differs from `latestSuccessfulRevision`. | Updating |
+| Your next edit names an MCP server that does not exist. | `ResolvedRefs=False`, but a successful revision still exists. | Update failed |
+| You fix the name and the revision succeeds. | Both revisions match again; no failing conditions. | Ready |
+| A different new Agent names a Harness that does not exist. | `ResolvedRefs=False` and no successful revision. | Failed |
+
+### The Exact Rule
+
+The UI computes the state in `agentRevisionState`
+(`ui/src/api/domain/agents.ts`). Later in this lab you will move this
+calculation into the controller, so it helps to know it exactly. It uses two
+checks:
+
+- **Failing:** any condition is `False`, ignoring the two exceptions above.
+- **Behind:** `observedGeneration` is lower than `metadata.generation`, or
+  `desiredRevision` is set and differs from `latestSuccessfulRevision`.
+
+| Has a successful revision? | Failing? | Behind? | State |
+| --- | --- | --- | --- |
+| Yes | Yes | Either | Update failed |
+| Yes | No | Yes | Updating |
+| Yes | No | No | Ready |
+| No | Yes | Either | Failed |
+| No | No | Yes, or `desiredRevision` is set | Preparing |
+| No | No | No, and no `desiredRevision` | No status |
+
+### Where This Lab Touches the Code
+
+| Path | What lives there | In this lab |
+| --- | --- | --- |
+| `ui/` | The web UI | Add the filter function, its tests, and the Status control. |
+| `go/core/internal/service` | Controller services and workflows | Add the Go revision-state calculation. |
+| `go/core/internal/grpcserver` | gRPC handlers | Fill the new field when mapping an Agent. |
+| `proto/` | gRPC API definitions | Add the `revision_state` response field. |
+| `go/api/v1alpha3` | Kubernetes API types | Read only; no CRD change. |
 
 ## Run the UI and Get Test Data
 

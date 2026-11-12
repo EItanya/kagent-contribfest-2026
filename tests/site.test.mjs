@@ -152,7 +152,7 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.getByRole('searchbox').fill('it("matches any selected state"');
     assert.equal(await page.locator('nav li:not([hidden])').count(), 1);
     await page.getByRole('searchbox').fill('');
-    for (const id of ['feature', 'kagent', 'lifecycle', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy']) {
+    for (const id of ['feature', 'install', 'kagent', 'lifecycle', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy']) {
       await page.locator(`nav a[href="#${id}"]`).click();
       await page.waitForFunction((id) => !document.getElementById(id).hidden, id);
       assert.equal(await page.locator('.lesson:not([hidden])').getAttribute('id'), id);
@@ -185,7 +185,7 @@ test('workshop navigation, controls, persistence, and responsive layout', async 
     await page.screenshot({ path: new URL('../test-results/desktop.png', import.meta.url).pathname });
     for (const width of [320, 375, 414, 768]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const id of ['feature', 'kagent', 'lifecycle', 'install', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy']) {
+      for (const id of ['feature', 'install', 'kagent', 'lifecycle', 'run-ui', 'function', 'tests', 'page', 'backend', 'deploy-controller', 'verify', 'deploy']) {
         await page.goto(`http://127.0.0.1:${server.address().port}/#${id}`);
         await page.locator('.lesson:not([hidden])').waitFor();
         if (id === 'install') {
